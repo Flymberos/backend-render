@@ -13,6 +13,7 @@ app.use(
     origin: "http://localhost:5173",
   })
 );
+app.use(express.static("dist"));
 app.use(express.json());
 
 morgan.token("body", (req, res) => JSON.stringify(req.body));
