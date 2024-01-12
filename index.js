@@ -1,8 +1,10 @@
+require("dotenv").config();
 const express = require("express");
 const morgan = require("morgan");
 const app = express();
 const cors = require("cors");
 const port = process.env.PORT || 3001;
+const Person = require("./models/Person.js");
 
 const unknownEndpoint = (request, response) => {
   response.status(404).send({ error: "unknown endpoint" });
@@ -20,46 +22,23 @@ morgan.token("body", (req, res) => JSON.stringify(req.body));
 
 app.use(morgan(":method :url :status :body"));
 
-let data = [
-  {
-    id: 1,
-    name: "Arto Hellas",
-    number: "040-123456",
-  },
-  {
-    id: 2,
-    name: "Ada Lovelace",
-    number: "39-44-5323523",
-  },
-  {
-    id: 3,
-    name: "Dan Abramov",
-    number: "12-43-234345",
-  },
-  {
-    id: 4,
-    name: "Mary Poppendieck",
-    number: "39-23-6423122",
-  },
-];
-
-app.get("/", (req, res) => {
-  res.send("Hello, Express!");
-});
-
 app.get("/api/persons", (req, res) => {
-  res.json(data);
+  Person.find({}).then((data) => res.json(data));
 });
 
 app.get("/api/persons/:id", (req, res) => {
-  const id = Number(req.params.id);
-  const person = data.find((person) => person.id === id);
-  if (!person) {
-    return res
-      .status(404)
-      .send("<h1>Person with the given id is not found.</h1>");
-  }
-  res.json(person);
+  Person.findById(req.params.id)
+    .then((data) => {
+      if (data) {
+        res.json(data);
+      } else {
+        res.status(404).end();
+      }
+    })
+    .catch((err) => {
+      console.log(err);
+      res.status(400).send({ error: "Malformatted id" });
+    });
 });
 
 app.post("/api/persons", (req, res) => {
@@ -71,34 +50,61 @@ app.post("/api/persons", (req, res) => {
       .json({ error: "You must provide both number and name" });
   }
 
-  const doesExist = data.some((data) => data.name === body.name);
+  Person.find({ name: body.name }).then((person) => {
+    if (person.length > 0) {
+      const updateNumber = {
+        name: body.name,
+        number: body.number,
+      };
+      Person.findByIdAndUpdate(person[0]._id.toString(), updateNumber, {
+        new: true,
+      })
+        .then((data) => console.log(data))
+        .catch((err) => next(err));
+    } else {
+      const newPerson = new Person({
+        name: body.name,
+        number: body.number,
+      });
 
-  if (doesExist) {
-    return res
-      .status(400)
-      .json({ error: "Person with the given name already exists." });
-  }
-
-  const id = Math.round(Math.random() * 1000);
-  const newPerson = { id, ...body };
-  data.push(newPerson);
-  res.json(newPerson);
+      newPerson
+        .save()
+        .then((data) => res.json(data))
+        .catch((err) => next(err));
+    }
+  });
 });
 
 app.delete("/api/persons/:id", (req, res) => {
-  const id = Number(req.params.id);
-  data = data.filter((person) => person.id !== id);
-  res.status(204).end();
+  const id = req.params.id;
+  Person.findByIdAndDelete(id)
+    .then((data) => res.status(204).end())
+    .catch((err) => console.log(err));
 });
 
 app.get("/info", (req, res) => {
-  res.send(`
-  <p>Phonebook has info for ${data.length} people</p>
-  <p>${new Date()}</p>
-  `);
+  Person.countDocuments().then((count) => {
+    res.send(`
+    <p>Phonebook has info for ${count} people</p>
+    <p>${new Date()}</p>
+    `);
+  });
 });
 
 app.use(unknownEndpoint);
+
+const errorHandler = (error, req, res, next) => {
+  console.log(error);
+  console.log(error.message);
+
+  if (error.name === "CastError") {
+    return response.status(400).send({ error: "malformatted id" });
+  }
+
+  next(error);
+};
+
+app.use(errorHandler);
 
 app.listen(port, () => {
   console.log(`Server is listening on port ${port}`);
